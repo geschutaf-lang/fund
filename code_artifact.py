@@ -156,4 +156,22 @@ if run_btn:
         st.subheader("📊 백테스트 성과 요약")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("연평균 수익률 (CAGR)", f"{cagr:.2f}%", f"SPY 대비 {cagr - spy_cagr:+.2f}%")
-        c2.metric("최대 낙폭 (MDD)", f"{mdd:.2f}%", f"SPY 대비 {mdd
+        c2.metric("최대 낙폭 (MDD)", f"{mdd:.2f}%", f"SPY 대비 {mdd - spy_mdd:+.2f}%", delta_color="inverse")
+        c3.metric("샤프 지수", f"{sharpe:.2f}")
+        c4.metric("월간 승률", f"{win_rate:.1f}%")
+
+        st.subheader("📈 누적 수익률 비교 (Log Scale)")
+        fig, ax = plt.subplots(figsize=(12, 5))
+        ax.plot(res_df.index, res_df['누적 자산'], label=f"6M 모멘텀 전략 (CAGR: {cagr:.1f}%)", color='#8e44ad', linewidth=2)
+        ax.plot(spy_cum.index, spy_cum, label=f"S&P 500 B&H (CAGR: {spy_cagr:.1f}%)", color='#3498db', linestyle='--', linewidth=1.5)
+        ax.set_yscale('log')
+        ax.set_ylabel("Growth of $1")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        st.pyplot(fig)
+
+        st.subheader("📋 월별 리밸런싱 및 투자 내역")
+        display_df = res_df.copy()
+        display_df['월 수익률'] = (display_df['월 수익률'] * 100).round(2).astype(str) + '%'
+        display_df['누적 자산'] = "$" + display_df['누적 자산'].round(3).astype(str)
+        st.dataframe(display_df.sort_index(ascending=False), use_container_width=True)
