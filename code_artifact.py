@@ -9,16 +9,16 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ─────────────────────────────────────────────────────────────────────────
-# 1. 설정 및 자산 티커 매핑 (화폐 비통일: 원화 코스피 지수 사용)
+# 1. 설정 및 자산 티커 매핑 (공격 자산에서 금 제외)
 # ─────────────────────────────────────────────────────────────────────────
 ASSETS = {
     '코스피(지수)': '^KS11',  
     'S&P500(SPY)': 'SPY',
-    '금(GLD)': 'GLD',
     '중기채(IEF)': 'IEF'
 }
 
-OFFENSIVE = ['코스피(지수)', 'S&P500(SPY)', '금(GLD)']
+# 공격 자산을 코스피와 S&P500 두 가지만 설정
+OFFENSIVE = ['코스피(지수)', 'S&P500(SPY)']
 
 # ─────────────────────────────────────────────────────────────────────────
 # 2. 데이터 다운로드 및 6개월 수익률 계산
@@ -55,15 +55,15 @@ def run_custom_momentum(monthly, mom_6m, start_year):
         date = sim_dates[i]
         next_date = sim_dates[i+1]
         
-        # 현재 날짜에 공격 자산 데이터가 모두 존재하는지 확인
+        # 현재 날짜에 두 공격 자산 데이터가 모두 존재하는지 확인
         if monthly.loc[date, OFFENSIVE].isna().any() or mom_6m.loc[date, OFFENSIVE].isna().any():
             continue 
             
         off_moms = mom_6m.loc[date, OFFENSIVE]
         
-        # 투자 로직 판단
+        # 투자 로직 판단 (2개 자산 기준)
         if (off_moms < 0).all():
-            # [방어 모드] 3개 공격 자산 모두 마이너스일 때
+            # [방어 모드] 코스피, S&P500 둘 다 마이너스일 때
             ief_mom = mom_6m.loc[date, '중기채(IEF)']
             
             # 미국 중기채(IEF) 6개월 수익률이 플러스(+)면 IEF 매수, 마이너스(-)면 현금 보유
@@ -74,7 +74,7 @@ def run_custom_momentum(monthly, mom_6m, start_year):
                 chosen = '현금'
                 mode = "🛡️ 방어(현금)"
         else:
-            # [공격 모드] 셋 중 하나라도 플러스면, 6개월 수익률 1등에 올인
+            # [공격 모드] 둘 중 하나라도 플러스면, 6개월 수익률 1등에 올인
             mode = "⚔️ 공격"
             chosen = off_moms.idxmax()
             
@@ -109,13 +109,21 @@ def run_custom_momentum(monthly, mom_6m, start_year):
 # ─────────────────────────────────────────────────────────────────────────
 # 4. 스트림릿 웹앱 UI
 # ─────────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="화폐 비통일 맞춤형 듀얼 모멘텀", page_icon="📈", layout="wide")
-st.title("📈 화폐 비통일 맞춤형 듀얼 모멘텀 (6개월 모멘텀)")
-st.warning("⚠️ 주의: 환율을 고려하지 않고 한국 원화 지수(KOSPI)와 미국 달러 자산(SPY, GLD, IEF)의 '수익률 숫자' 자체만 단순 비교합니다.")
+st.set_page_config(page_title="주식형 듀얼 모멘텀", page_icon="📊", layout="wide")
+st.title("📊 주식형 듀얼 모멘텀 백테스터 (코스피 vs S&P500)")
+st.markdown("""
+**[전략 룰 - 주식형 6개월 모멘텀]**
+1. 매월 말 **코스피 지수**와 **S&P500(SPY)**의 최근 **6개월 수익률**을 확인합니다.
+2. 둘 중 **하나라도 0% 이상**이면, 6개월 수익률이 **더 높은 지수에 100% 올인**합니다.
+3. 둘 다 **0% 미만(마이너스)**이면, **미국 중기채(IEF)의 6개월 수익률을 확인**합니다.
+   - IEF 6개월 수익률이 **0% 이상이면 IEF 보유**
+   - IEF 6개월 수익률마저 **0% 미만이면 전량 현금(수익률 0%) 보유**
+""")
+st.warning("⚠️ 주의: 환율을 고려하지 않고 한국 원화 지수(KOSPI)와 미국 달러 지수(SPY)의 수익률 숫자 자체만 단순 비교합니다.")
 
 with st.sidebar:
     st.header("⚙️ 백테스트 설정")
-    s_year = st.number_input("시작 연도 (데이터 확보 시점 이후 자동 시작)", min_value=2000, max_value=2023, value=2000)
+    s_year = st.number_input("시작 연도", min_value=2000, max_value=2023, value=2000)
     e_year = st.number_input("종료 연도", min_value=2010, max_value=2026, value=2024)
     run_btn = st.button("🚀 백테스트 실행", type="primary", use_container_width=True)
 
@@ -145,7 +153,7 @@ if run_btn:
         spy_cagr = (spy_cum.iloc[-1] ** (1/spy_years) - 1) * 100 if not spy_cum.empty else 0
         spy_mdd = ((spy_cum - spy_cum.cummax()) / spy_cum.cummax()).min() * 100 if not spy_cum.empty else 0
 
-        # ✅ 수정 완료: 잘려나갔던 괄호 에러 해결
+        # 성과 요약 카드
         st.subheader("📊 백테스트 성과 요약")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("연평균 수익률 (CAGR)", f"{cagr:.2f}%", f"SPY 대비 {cagr - spy_cagr:+.2f}%")
@@ -153,16 +161,18 @@ if run_btn:
         c3.metric("샤프 지수", f"{sharpe:.2f}")
         c4.metric("월간 승률", f"{win_rate:.1f}%")
 
+        # 누적 수익률 차트
         st.subheader("📈 누적 수익률 비교 (Log Scale)")
         fig, ax = plt.subplots(figsize=(12, 5))
-        ax.plot(res_df.index, res_df['누적 자산'], label=f"6M 비통일 전략 (CAGR: {cagr:.1f}%)", color='#e67e22', linewidth=2)
-        ax.plot(spy_cum.index, spy_cum, label=f"S&P 500 B&H (CAGR: {spy_cagr:.1f}%)", color='#3498db', linestyle='--', linewidth=1.5)
+        ax.plot(res_df.index, res_df['누적 자산'], label=f"주식형 전략 (CAGR: {cagr:.1f}%)", color='#2980b9', linewidth=2)
+        ax.plot(spy_cum.index, spy_cum, label=f"S&P 500 B&H (CAGR: {spy_cagr:.1f}%)", color='#7f8c8d', linestyle='--', linewidth=1.5)
         ax.set_yscale('log')
         ax.set_ylabel("Growth of 1 Unit")
         ax.grid(True, alpha=0.3)
         ax.legend()
         st.pyplot(fig)
 
+        # 상세 투자 내역
         st.subheader("📋 월별 리밸런싱 및 투자 내역")
         display_df = res_df.copy()
         display_df['월 수익률'] = (display_df['월 수익률'] * 100).round(2).astype(str) + '%'
