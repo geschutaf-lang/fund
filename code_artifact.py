@@ -37,12 +37,11 @@ def download_data_and_calc_momentum(start_year, end_year):
     raw = yf.download(tickers, start=start_dt, end=end_dt, auto_adjust=True, progress=False)['Close']
     monthly = raw.resample('ME').last()
     
-    # 컬럼 이름을 티커에서 알아보기 쉬운 한글 이름으로 변경
+    # 컬럼 이름을 티커에서 한글 이름으로 변경
     inv_map = {v: k for k, v in ASSETS.items()}
     monthly.rename(columns=inv_map, inplace=True)
     
     # 3개월 수익률 계산 (Momentum)
-    # n개월 수익률 = 현재 가격 / n개월 전 가격 - 1
     mom_3m = monthly / monthly.shift(3) - 1
     
     return monthly, mom_3m
@@ -59,9 +58,9 @@ def run_custom_momentum(monthly, mom_3m, start_year):
         date = sim_dates[i]
         next_date = sim_dates[i+1]
         
-        # 1. 현재 날짜에 모든 공격 자산의 3개월 데이터가 있는지 확인
+        # 1. 현재 날짜에 모든 공격 자산의 데이터가 존재하는지 확인
         if monthly.loc[date, OFFENSIVE].isna().any() or mom_3m.loc[date, OFFENSIVE].isna().any():
-            continue # GLD 등이 상장하기 전이면 백테스트 대기
+            continue 
             
         # 2. 공격 자산 3개월 수익률 가져오기
         off_moms = mom_3m.loc[date, OFFENSIVE]
@@ -74,7 +73,7 @@ def run_custom_momentum(monthly, mom_3m, start_year):
             if not def_moms.empty:
                 chosen = def_moms.idxmax()
             else:
-                chosen = '초단기채(BIL)' # 데이터 부족 시 기본 현금(BIL)
+                chosen = '초단기채(BIL)'
         else:
             # [공격 모드] 셋 중 하나라도 플러스면, 3개월 수익률 1등에 올인
             mode = "⚔️ 공격"
@@ -84,7 +83,7 @@ def run_custom_momentum(monthly, mom_3m, start_year):
         if pd.notna(monthly.loc[next_date, chosen]) and monthly.loc[date, chosen] > 0:
             ret = monthly.loc[next_date, chosen] / monthly.loc[date, chosen] - 1
         else:
-            ret = 0.0 # 상장 전이거나 데이터 오류 시 수익률 0 (현금 보관)
+            ret = 0.0
             
         capital *= (1 + ret)
         
@@ -128,8 +127,9 @@ if run_btn:
     if res_df.empty:
         st.error("해당 기간에는 ETF 상장 전이라 거래 데이터가 없습니다. 시작 연도를 늦춰보세요.")
     else:
-        # ── 성과 지표 계산 ──
-        years = (res_df.index[-1] - res_df.index[0]).days / 365.25
+        # ── 성과 지표 계산 (Numpy 날짜 변환 에러 해결 패치 적용) ──
+        years = len(res_df) / 12  
+        if years <= 0: years = 1
         cagr = (res_df['누적 자산'].iloc[-1] ** (1/years) - 1) * 100
         mdd = ((res_df['누적 자산'] - res_df['누적 자산'].cummax()) / res_df['누적 자산'].cummax()).min() * 100
         sharpe = (res_df['월 수익률'].mean() / res_df['월 수익률'].std()) * np.sqrt(12)
@@ -139,8 +139,10 @@ if run_btn:
         spy_prices = monthly_df.loc[res_df.index, 'S&P500(SPY)']
         spy_rets = spy_prices.pct_change().dropna()
         spy_cum = (1 + spy_rets).cumprod()
-        spy_cagr = (spy_cum.iloc[-1] ** (1/years) - 1) * 100
-        spy_mdd = ((spy_cum - spy_cum.cummax()) / spy_cum.cummax()).min() * 100
+        spy_years = len(spy_cum) / 12
+        if spy_years <= 0: spy_years = 1
+        spy_cagr = (spy_cum.iloc[-1] ** (1/spy_years) - 1) * 100 if not spy_cum.empty else 0
+        spy_mdd = ((spy_cum - spy_cum.cummax()) / spy_cum.cummax()).min() * 100 if not spy_cum.empty else 0
 
         # ── 결과 화면 출력 ──
         st.subheader("📊 백테스트 성과 요약")
@@ -165,7 +167,7 @@ if run_btn:
         st.subheader("📋 월별 리밸런싱 및 투자 내역")
         st.caption(f"총 {len(res_df)}개월 동안 백테스트가 진행되었습니다. (데이터 확보 시점부터 자동 시작)")
         
-        # 보기 좋게 포맷팅
+        # 표 출력 포맷팅
         display_df = res_df.copy()
         display_df['월 수익률'] = (display_df['월 수익률'] * 100).round(2).astype(str) + '%'
         display_df['누적 자산'] = "$" + display_df['누적 자산'].round(3).astype(str)
