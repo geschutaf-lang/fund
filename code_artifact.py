@@ -9,16 +9,16 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ─────────────────────────────────────────────────────────────────────────
-# 1. 설정 및 자산 티커 매핑 (달러화 화폐 통일)
+# 1. 설정 및 자산 티커 매핑 (화폐 비통일: 원화 코스피 지수 사용)
 # ─────────────────────────────────────────────────────────────────────────
 ASSETS = {
-    '코스피(EWY)': 'EWY',  
+    '코스피(지수)': '^KS11',  
     'S&P500(SPY)': 'SPY',
     '금(GLD)': 'GLD',
     '중기채(IEF)': 'IEF'
 }
 
-OFFENSIVE = ['코스피(EWY)', 'S&P500(SPY)', '금(GLD)']
+OFFENSIVE = ['코스피(지수)', 'S&P500(SPY)', '금(GLD)']
 
 # ─────────────────────────────────────────────────────────────────────────
 # 2. 데이터 다운로드 및 6개월 수익률 계산
@@ -27,7 +27,7 @@ OFFENSIVE = ['코스피(EWY)', 'S&P500(SPY)', '금(GLD)']
 def download_data_and_calc_momentum(start_year, end_year):
     tickers = list(ASSETS.values())
     
-    # 💡 수정: 6개월 모멘텀 계산을 위해 시작 연도보다 7개월 일찍 데이터 수집
+    # 6개월 모멘텀 계산을 위해 시작 연도보다 7개월 일찍 데이터 수집
     start_dt = f"{start_year - 1}-05-01"
     end_dt = f"{end_year}-12-31"
     
@@ -38,7 +38,7 @@ def download_data_and_calc_momentum(start_year, end_year):
     inv_map = {v: k for k, v in ASSETS.items()}
     monthly.rename(columns=inv_map, inplace=True)
     
-    # 💡 수정: 6개월 수익률 계산 (Momentum)
+    # 6개월 수익률 계산
     mom_6m = monthly / monthly.shift(6) - 1
     
     return monthly, mom_6m
@@ -55,11 +55,10 @@ def run_custom_momentum(monthly, mom_6m, start_year):
         date = sim_dates[i]
         next_date = sim_dates[i+1]
         
-        # 현재 날짜에 모든 공격 자산의 데이터가 존재하는지 확인
+        # 현재 날짜에 공격 자산 데이터가 모두 존재하는지 확인
         if monthly.loc[date, OFFENSIVE].isna().any() or mom_6m.loc[date, OFFENSIVE].isna().any():
             continue 
             
-        # 💡 수정: 6개월 수익률 가져오기
         off_moms = mom_6m.loc[date, OFFENSIVE]
         
         # 투자 로직 판단
@@ -67,7 +66,7 @@ def run_custom_momentum(monthly, mom_6m, start_year):
             # [방어 모드] 3개 공격 자산 모두 마이너스일 때
             ief_mom = mom_6m.loc[date, '중기채(IEF)']
             
-            # 💡 수정: 미국 중기채(IEF) 6개월 수익률이 플러스(+)면 IEF 매수, 마이너스(-)면 현금 보유
+            # 미국 중기채(IEF) 6개월 수익률이 플러스(+)면 IEF 매수, 마이너스(-)면 현금 보유
             if pd.notna(ief_mom) and ief_mom > 0:
                 chosen = '중기채(IEF)'
                 mode = "🛡️ 방어(채권)"
@@ -110,20 +109,13 @@ def run_custom_momentum(monthly, mom_6m, start_year):
 # ─────────────────────────────────────────────────────────────────────────
 # 4. 스트림릿 웹앱 UI
 # ─────────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="달러 통일 맞춤형 듀얼 모멘텀", page_icon="📈", layout="wide")
-st.title("📈 달러 통일 맞춤형 듀얼 모멘텀 백테스터 (6개월 모멘텀)")
-st.markdown("""
-**[전략 룰 - 6개월 모멘텀 버전]**
-1. 매월 말 **코스피(EWY), S&P500(SPY), 금(GLD)**의 최근 **6개월 수익률**을 확인합니다. (모두 달러 기준)
-2. 셋 중 **하나라도 0% 이상**이면, 6개월 수익률이 **가장 높은 종목에 100% 올인**합니다.
-3. 셋 다 **0% 미만(마이너스)**이면, **미국 중기채(IEF)의 6개월 수익률을 확인**합니다.
-   - IEF 6개월 수익률이 **0% 이상이면 IEF 보유**
-   - IEF 6개월 수익률마저 **0% 미만이면 전량 현금(수익률 0%) 보유**
-""")
+st.set_page_config(page_title="화폐 비통일 맞춤형 듀얼 모멘텀", page_icon="📈", layout="wide")
+st.title("📈 화폐 비통일 맞춤형 듀얼 모멘텀 (6개월 모멘텀)")
+st.warning("⚠️ 주의: 환율을 고려하지 않고 한국 원화 지수(KOSPI)와 미국 달러 자산(SPY, GLD, IEF)의 '수익률 숫자' 자체만 단순 비교합니다.")
 
 with st.sidebar:
     st.header("⚙️ 백테스트 설정")
-    s_year = st.number_input("시작 연도 (ETF 상장일 이후 자동 시작)", min_value=2000, max_value=2023, value=2000)
+    s_year = st.number_input("시작 연도 (데이터 확보 시점 이후 자동 시작)", min_value=2000, max_value=2023, value=2000)
     e_year = st.number_input("종료 연도", min_value=2010, max_value=2026, value=2024)
     run_btn = st.button("🚀 백테스트 실행", type="primary", use_container_width=True)
 
@@ -153,6 +145,7 @@ if run_btn:
         spy_cagr = (spy_cum.iloc[-1] ** (1/spy_years) - 1) * 100 if not spy_cum.empty else 0
         spy_mdd = ((spy_cum - spy_cum.cummax()) / spy_cum.cummax()).min() * 100 if not spy_cum.empty else 0
 
+        # ✅ 수정 완료: 잘려나갔던 괄호 에러 해결
         st.subheader("📊 백테스트 성과 요약")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("연평균 수익률 (CAGR)", f"{cagr:.2f}%", f"SPY 대비 {cagr - spy_cagr:+.2f}%")
@@ -162,10 +155,10 @@ if run_btn:
 
         st.subheader("📈 누적 수익률 비교 (Log Scale)")
         fig, ax = plt.subplots(figsize=(12, 5))
-        ax.plot(res_df.index, res_df['누적 자산'], label=f"6M 모멘텀 전략 (CAGR: {cagr:.1f}%)", color='#8e44ad', linewidth=2)
+        ax.plot(res_df.index, res_df['누적 자산'], label=f"6M 비통일 전략 (CAGR: {cagr:.1f}%)", color='#e67e22', linewidth=2)
         ax.plot(spy_cum.index, spy_cum, label=f"S&P 500 B&H (CAGR: {spy_cagr:.1f}%)", color='#3498db', linestyle='--', linewidth=1.5)
         ax.set_yscale('log')
-        ax.set_ylabel("Growth of $1")
+        ax.set_ylabel("Growth of 1 Unit")
         ax.grid(True, alpha=0.3)
         ax.legend()
         st.pyplot(fig)
@@ -173,5 +166,5 @@ if run_btn:
         st.subheader("📋 월별 리밸런싱 및 투자 내역")
         display_df = res_df.copy()
         display_df['월 수익률'] = (display_df['월 수익률'] * 100).round(2).astype(str) + '%'
-        display_df['누적 자산'] = "$" + display_df['누적 자산'].round(3).astype(str)
+        display_df['누적 자산'] = display_df['누적 자산'].round(3).astype(str)
         st.dataframe(display_df.sort_index(ascending=False), use_container_width=True)
